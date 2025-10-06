@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  strands:
+    build: .
+    working_dir: /app
+    command: python agent.py
+    env_file:
+      - .env
