@@ -1,2 +1,4 @@
-strands-agents
 python-dotenv
+strands-agents
+tavily-python
+bedrock-agentcore

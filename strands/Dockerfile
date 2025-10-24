@@ -6,4 +6,6 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-CMD ["python", "agent.py"]
+EXPOSE 8080
+
+ENTRYPOINT ["python", "agent.py"]
