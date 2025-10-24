@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  strands:
+    build: ./strands
+    working_dir: /app
+    command: python agent.py 
+    env_file:
+      - ./strands/.env
+    ports:
+      - "8080:8080"
+    networks:
+      - ai-agent-network
+
+  frontend:
+    build: ./frontend
+    working_dir: /app
+    command: streamlit run client.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - strands
+    networks:
+      - ai-agent-network
+
+networks:
+  ai-agent-network:
+    driver: bridge
