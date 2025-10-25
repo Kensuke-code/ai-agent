@@ -5,6 +5,8 @@ from strands import Agent
 from strands.tools import tool
 from tavily import TavilyClient
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+import datetime
+from zoneinfo import ZoneInfo
 
 # .envファイルから環境変数をロード
 load_dotenv()
@@ -15,11 +17,16 @@ def search_tavily(query: str):
     client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
     return client.search(query)
 
+# 今日の日付を正しく回答できるようにするため
+@tool
+def calender():
+    return datetime.datetime.now(ZoneInfo("Asia/Tokyo"))
+
 # Strandsでエージェントを作成
 agent = Agent(
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    system_prompt="You are a helpful assistant that can search the web.",
-    tools=[search_tavily]
+    system_prompt="聞かれたことに対して根拠となる情報リソースを提示しながら回答すること。今日の日付は常に最新の日付を確認して返答すること",
+    tools=[search_tavily,calender]
 )
 
 # AgentCoreのサーバーを作成
