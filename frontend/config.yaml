@@ -1,0 +1,22 @@
+cookie:
+  expiry_days: 1
+  key: some_signature_key
+  name: some_cookie_name
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com # メールは使用しない
+      name: Administrator
+      password: $2b$12$hdPcJp9Hum7G1gKMu/8h0.f3NG35sBtITxHinL7c2s78RNeLufWfu
+    kensuke:
+      email: kensuke@example.com # メールは使用しない
+      name: Kensuke
+      password: $2b$12$cjKSUEd4WZ7pWDV8j4gMHOnsz4BegTGA8f0LarqCjsV.x50VxHVxK
+    yuki:
+      email: yuki@example.com # メールは使用しない
+      name: Yuki
+      password: $2b$12$gkcsPh4hNWRswCKY98f4pO/MsTEzkyPOm5RqD4XuhVmxDLsZOAsmC
+    tomoyoshi:
+      email: tomoyoshi@example.com # メールは使用しない
+      name: Tomoyoshi
+      password: $2b$12$PE6rimu2gg6eXCh9xumoVOxlvkc6gLsWVM4wSxiKY7neMsguVPuAO
