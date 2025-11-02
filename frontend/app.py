@@ -1,6 +1,6 @@
 import streamlit as st
 from services.sidebar import show_sidebar
-from services.auth import create_authenticator ,is_login
+from services.auth import is_login
 
 # ログイン検証
 is_login()
@@ -16,11 +16,6 @@ st.set_page_config(
 st.title("Kenchobi AI Agentへようこそ!")
 st.write("好きなエージェントを選んでね!")
 
-# ログアウトボタン
-authenticator = create_authenticator()
-
-if st.session_state.get('authentication_status'):
-  authenticator.logout()
 
 
 
