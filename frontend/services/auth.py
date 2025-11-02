@@ -29,7 +29,12 @@ def create_authenticator() -> stauth.Authenticate:
         auto_hash=False,
     )
 
-# ログイン検証
+# ブラウザの再読み込みをするとセッションが切れてしまう
 def is_login() -> None:
-    if st.session_state.get("authentication_status") is None:
+    
+    # 認証状態をチェック
+    auth_status = st.session_state.get("authentication_status")
+    
+    # 未認証または認証失敗の場合のみログインページにリダイレクト
+    if auth_status is None or auth_status is False:
         st.switch_page("pages/login.py")
