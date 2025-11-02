@@ -1,7 +1,15 @@
 # 必要なライブラリをインポート
 from dotenv import load_dotenv
-import os, boto3, json, requests
+import boto3, requests
 import streamlit as st
+from services.sidebar import show_sidebar
+from services.auth import is_login
+
+# ログイン検証
+is_login()
+
+# ログイン済みの場合
+show_sidebar()
 
 # .envファイルから環境変数をロード
 load_dotenv(override=True)

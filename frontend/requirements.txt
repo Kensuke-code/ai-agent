@@ -1,4 +1,5 @@
 python-dotenv
 streamlit
+streamlit-authenticator
 requests
 boto3
