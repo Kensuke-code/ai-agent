@@ -1,0 +1,9 @@
+services:
+  agent-app:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      # イメージ内でビルドしたLinux用.venvがバインドマウントで上書きされないよう保護
+      - /app/.venv

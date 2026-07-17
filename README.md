@@ -1,2 +1,68 @@
 # ai-agent
 Custom AI Agent
+
+Claude Agent SDK (Python) を使って、コンテナ内で `agent.py` を動かすプロジェクト。
+
+## セットアップ
+
+依存関係は `pip` ではなく `uv` (`pyproject.toml` + `uv.lock`) で管理している。
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+コンテナは `sleep infinity` で起動したままになるので、中に入って好きなタイミングで実行する。
+
+まずコンテナに入る:
+
+```bash
+docker compose exec agent-app bash
+```
+
+コンテナ内で実行:
+
+```bash
+uv run python agent.py
+```
+
+## 認証(API課金ではなくPro/Maxプランを使う)
+
+`ANTHROPIC_API_KEY` はAnthropic ConsoleのAPI従量課金、Pro/Maxプランの利用枠とは別会計。Pro/Max分を使いたい場合は設定しない。
+
+1. ホスト側で1度だけ実行してOAuthトークンを発行
+   ```bash
+   claude setup-token
+   ```
+2. `.env` に `ANTHROPIC_API_KEY` は書かず、発行されたトークンを設定
+   ```
+   CLAUDE_CODE_OAUTH_TOKEN=<setup-tokenで発行された値>
+   ```
+
+`ANTHROPIC_API_KEY` が設定されていると常に優先されるので、Pro/Maxを使うときは完全に削除する。
+
+**注意点:**
+- `CLAUDE_CODE_OAUTH_TOKEN` は**有効期限1年、自動更新されない**(切れたら `claude setup-token` を再実行)
+- 推論専用のトークンで、Remote Control等の機能は使えない
+
+以前 `Credit balance is too low` エラーが出たのは `ANTHROPIC_API_KEY` 経由の課金クレジットが尽きていたためで、上記の切り替えで解消した。
+
+## 依存関係の管理(pyproject.toml / uv.lock)
+
+- `pyproject.toml`: 直接使うパッケージを書く人間編集用のファイル。依存を追加・削除・バージョン制約変更するときだけ触る
+- `uv.lock`: 間接依存も含めた全パッケージのバージョンを固定する自動生成ファイル。手で編集しない
+
+依存を足す/消すときはコンテナ内で実行し、生成された2ファイルをセットでコミットする:
+
+```bash
+docker compose exec agent-app uv add <package>
+docker compose exec agent-app uv remove <package>
+```
+
+`Dockerfile` は `uv sync --frozen` で `uv.lock` の内容をそのまま入れるので、`pyproject.toml` だけ書き換えて `uv.lock` の更新を忘れるとビルドが失敗する(意図的なガード)。また変更後は `docker compose build` でイメージを作り直さないと反映されない。
+
+## 参考
+
+- Claude Agent SDK (Python) リファレンス: https://code.claude.com/docs/ja/agent-sdk/python#query
+- Claude Agent SDK ガイド: https://shiftb.dev/articles/claude-agent-sdk-guide#basic-agent
+- Research Skillの実装例: https://zenn.dev/tokium_dev/articles/building-a-research-skill
