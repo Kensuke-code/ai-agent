@@ -47,6 +47,12 @@ uv run python agent.py
 
 以前 `Credit balance is too low` エラーが出たのは `ANTHROPIC_API_KEY` 経由の課金クレジットが尽きていたためで、上記の切り替えで解消した。
 
+## セッション機能(会話の継続)
+
+`agent.py`は実行完了時に`session_id`を`session_id.txt`に保存し、次回実行時にそのIDで会話を再開(`resume`)する。会話を続けたいときは`session_id.txt`を残したまま、新しく会話を始めたいときは`session_id.txt`を削除してから実行する。
+
+`session_id.txt`は実行のたびに変わる一時状態のため`.gitignore`済み。セッションの再開に失敗した場合(セッションが存在しない/壊れているなど)は`session_id.txt`を自動で削除し、次回実行時に新規セッションから始まるようにしている。
+
 ## 依存関係の管理(pyproject.toml / uv.lock)
 
 - `pyproject.toml`: 直接使うパッケージを書く人間編集用のファイル。依存を追加・削除・バージョン制約変更するときだけ触る
