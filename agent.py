@@ -1,9 +1,12 @@
 import asyncio
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock
+import os
+from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock, ProcessError, CLIConnectionError
 
 SESSION_FILE = "session_id.txt"
 
+###############
 # メソッド
+###############
 def save_session_id(session_id):
   with open(SESSION_FILE, "w") as f:
     f.write(session_id)
@@ -18,28 +21,41 @@ def load_session_id():
     print("セッションのファイルが見つかりません")
     return None
 
+def clear_session_id():
+  if os.path.exists(SESSION_FILE):
+    os.remove(SESSION_FILE)
+
+
+###############
 # メイン処理
+###############
 async def main():
 
-  session_id = load_session_id()
+  try:
+    session_id = load_session_id()
 
-  async for message in query(
-    prompt="行き方のところネット検索できない？", # 指示は都度書き直す
-    options=ClaudeAgentOptions(
-      allowed_tools=["Read", "Edit", "Glob", "WebSearch"],
-      permission_mode="acceptEdits",
-      resume=session_id
-    ),
-  ):
-    if isinstance(message, AssistantMessage):
-      for block in message.content:
-        if isinstance(block, TextBlock):
-          print(block.text)
-    elif isinstance(message, ResultMessage):
-      session_id = message.session_id
-      if message.subtype == "success":
-        save_session_id(session_id)
-      else:
-        print(f"クエリが失敗しました: subtype={message.subtype}, is_error={message.is_error}")
+    async for message in query(
+      prompt="行き方のところネット検索できない？", # 指示は都度書き直す
+      options=ClaudeAgentOptions(
+        allowed_tools=["Read", "Edit", "Glob", "WebSearch"],
+        permission_mode="acceptEdits",
+        resume=session_id
+      ),
+    ):
+      if isinstance(message, AssistantMessage):
+        for block in message.content:
+          if isinstance(block, TextBlock):
+            print(block.text)
+      elif isinstance(message, ResultMessage):
+        session_id = message.session_id
+        if message.subtype == "success":
+          save_session_id(session_id)
+        else:
+          print(f"クエリが失敗しました: subtype={message.subtype}, is_error={message.is_error}")
+  except ProcessError as e:
+    print(f"セッションの再開に失敗しました。次回起動時にセッションを再生成します： {e}")
+    clear_session_id()
+  except CLIConnectionError as e:
+    print(f"Claude CLIに接続できませんでした： {e}")
 
 asyncio.run(main())
