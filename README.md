@@ -53,6 +53,33 @@ uv run python agent.py
 
 `session_id.txt`は実行のたびに変わる一時状態のため`.gitignore`済み。セッションの再開に失敗した場合(セッションが存在しない/壊れているなど)は`session_id.txt`を自動で削除し、次回実行時に新規セッションから始まるようにしている。
 
+## ストリーミング出力とツール呼び出しの表示
+
+`ClaudeAgentOptions(include_partial_messages=True)`を指定すると、最終的な`AssistantMessage`/`ResultMessage`より前に`StreamEvent`が逐次流れてくる。`StreamEvent`はAnthropic APIの生のストリームイベントをラップしたもので、以下のように入れ子構造になっている。
+
+```
+StreamEvent                     ← 1段目:「これはストリーミングの断片ですよ」という外側の箱
+  └ event                       ← 2段目:「どんな種類の出来事か」(6種類ある)
+       ├ message_start          … 1ターンの開始
+       ├ content_block_start    … コンテンツブロック開始(content_block.type: "text" | "tool_use")
+       ├ content_block_delta    … ブロック内の差分
+       │    └ delta.type        ← 3段目:「テキストの断片なのか、ツール入力の断片なのか」
+       │         ├ "text_delta"        … テキストの断片
+       │         └ "input_json_delta"  … ツール入力(JSON)の断片
+       ├ content_block_stop     … コンテンツブロック終了
+       ├ message_delta          … ターン全体の差分(stop_reasonなど)
+       └ message_stop           … 1ターンの終了
+```
+
+text/tool_useのブロックごとに`content_block_start → content_block_delta(複数回) → content_block_stop`を繰り返し、1ターン分の`StreamEvent`が終わると`AssistantMessage`(そのターンの完全なメッセージ)が流れてくる。ツール実行を挟んで次のターンが始まる場合はまた`StreamEvent`から繰り返し、クエリ全体が終わると最後に`ResultMessage`が流れてくる。
+
+`agent.py`では`content_block_start`の`content_block.type`が`"tool_use"`かどうかで`in_tool`フラグを立て、
+
+- `in_tool`中は`content_block_delta`の`text_delta`を表示せず、代わりに`[Using Tool: 名前]... Done`とだけ表示する
+- `in_tool`でない`text_delta`はそのまま逐次表示する(`AssistantMessage`側での再表示はしていないので二重出力にならない)
+
+ことで、会話テキストとツール呼び出しの表示が混ざらないようにしている。新しいターンは直前のターンで`tool_use`が使われた場合にのみ発生するため、テキストのみのターンが連続することはない。
+
 ## 依存関係の管理(pyproject.toml / uv.lock)
 
 - `pyproject.toml`: 直接使うパッケージを書く人間編集用のファイル。依存を追加・削除・バージョン制約変更するときだけ触る
