@@ -55,7 +55,14 @@ uv run python agent.py
 
 ## ストリーミング出力とツール呼び出しの表示
 
-`ClaudeAgentOptions(include_partial_messages=True)`を指定すると、最終的な`AssistantMessage`/`ResultMessage`より前に`StreamEvent`が逐次流れてくる。`StreamEvent`はAnthropic APIの生のストリームイベントをラップしたもので、以下のように入れ子構造になっている。
+### メッセージ種別の使い分け
+
+| 種別 | 内容 | 届くタイミング |
+|---|---|---|
+| `AssistantMessage` | 1ターン分の完成した応答(テキスト・ツール呼び出しを含む) | 常に届く |
+| `StreamEvent` | 生成途中の断片。生のClaude APIストリーミングイベントをラップしたもの | `include_partial_messages=True`の時のみ追加で届く |
+
+`StreamEvent`は以下のように入れ子構造になっている。
 
 ```
 StreamEvent                     ← 1段目:「これはストリーミングの断片ですよ」という外側の箱
@@ -67,11 +74,27 @@ StreamEvent                     ← 1段目:「これはストリーミングの
        │         ├ "text_delta"        … テキストの断片
        │         └ "input_json_delta"  … ツール入力(JSON)の断片
        ├ content_block_stop     … コンテンツブロック終了
-       ├ message_delta          … ターン全体の差分(stop_reasonなど)
-       └ message_stop           … 1ターンの終了
+       ├ message_delta          … ターン全体の差分(最終stop_reasonと累積usage)
+       └ message_stop           … ストリーム完全終了の合図
 ```
 
-text/tool_useのブロックごとに`content_block_start → content_block_delta(複数回) → content_block_stop`を繰り返し、1ターン分の`StreamEvent`が終わると`AssistantMessage`(そのターンの完全なメッセージ)が流れてくる。ツール実行を挟んで次のターンが始まる場合はまた`StreamEvent`から繰り返し、クエリ全体が終わると最後に`ResultMessage`が流れてくる。
+### イベントの届く順序(`include_partial_messages=True`の場合)
+
+```
+StreamEvent(message_start)
+StreamEvent(content_block_start)
+StreamEvent(content_block_delta) ×N     ← text_delta または input_json_delta
+StreamEvent(content_block_stop)
+  …ブロック数だけ繰り返し…
+StreamEvent(message_delta)
+StreamEvent(message_stop)
+AssistantMessage                         ← 完成版
+... ツール実行 ...
+... 次のターンのStreamEvent ...
+ResultMessage                             ← クエリ全体の最終結果(stop_reason, cost等はここから取得)
+```
+
+### 採用した実装方針
 
 `agent.py`では`content_block_start`の`content_block.type`が`"tool_use"`かどうかで`in_tool`フラグを立て、
 
@@ -79,6 +102,14 @@ text/tool_useのブロックごとに`content_block_start → content_block_delt
 - `in_tool`でない`text_delta`はそのまま逐次表示する(`AssistantMessage`側での再表示はしていないので二重出力にならない)
 
 ことで、会話テキストとツール呼び出しの表示が混ざらないようにしている。新しいターンは直前のターンで`tool_use`が使われた場合にのみ発生するため、テキストのみのターンが連続することはない。
+
+また`delta.type`によるフィルタ(`text_delta`のときのみ表示)自体が、ツール呼び出し引数の断片(`input_json_delta`, 中身は`partial_json`)を自動的に除外しており、壊れたJSON断片が画面に誤って表示される事故を防いでいる。
+
+`message_delta`/`message_stop`は現時点では未使用。最終的な`stop_reason`と累積トークン数(usage)は、Agent SDKが後で届ける`ResultMessage`から取得すれば十分なため。refusal(拒否)の低遅延検知や、ターン終了を待たないリアルタイムのトークン/コストメーターが必要になった場合は再検討する。
+
+### 未対応・今後の検討事項
+
+- **`thinking_delta`(拡張思考)への対応は未検討。** 現状`text_delta`のみをフィルタしているため自動的に除外されるが、思考過程を別枠で表示する要件が出た場合はブロック種別による分岐が必要。
 
 ## 依存関係の管理(pyproject.toml / uv.lock)
 
