@@ -53,6 +53,31 @@ uv run python agent.py
 
 `session_id.txt`は実行のたびに変わる一時状態のため`.gitignore`済み。セッションの再開に失敗した場合(セッションが存在しない/壊れているなど)は`session_id.txt`を自動で削除し、次回実行時に新規セッションから始まるようにしている。
 
+## ストリーミング出力とツール呼び出しの表示
+
+`ClaudeAgentOptions(include_partial_messages=True)`を指定すると、最終的な`AssistantMessage`/`ResultMessage`より前に`StreamEvent`が逐次流れてくる。`StreamEvent.event`はAnthropic APIの生のストリームイベントで、`type`は以下の階層になっている。
+
+```
+StreamEvent (message_start)                      … 1ターンの開始
+StreamEvent (content_block_start)                … コンテンツブロック開始(content_block.type: "text" | "tool_use")
+StreamEvent (content_block_delta)                … ブロック内の差分(delta.type: "text_delta" | "input_json_delta")
+StreamEvent (content_block_stop)                 … コンテンツブロック終了
+  ↑ text/tool_useのブロックごとに start → delta(複数回) → stop を繰り返す
+StreamEvent (message_delta)
+StreamEvent (message_stop)                       … 1ターンの終了
+AssistantMessage                                 … そのターンの完全なメッセージ(まとめ)
+... ツール実行 ...
+... 次のターンのStreamEvent ...
+ResultMessage                                     … クエリ全体の最終結果
+```
+
+`agent.py`では`content_block_start`の`content_block.type`が`"tool_use"`かどうかで`in_tool`フラグを立て、
+
+- `in_tool`中は`content_block_delta`の`text_delta`を表示せず、代わりに`[Using Tool: 名前]... Done`とだけ表示する
+- `in_tool`でない`text_delta`はそのまま逐次表示する(`AssistantMessage`側での再表示はしていないので二重出力にならない)
+
+ことで、会話テキストとツール呼び出しの表示が混ざらないようにしている。新しいターンは直前のターンで`tool_use`が使われた場合にのみ発生するため、テキストのみのターンが連続することはない。
+
 ## 依存関係の管理(pyproject.toml / uv.lock)
 
 - `pyproject.toml`: 直接使うパッケージを書く人間編集用のファイル。依存を追加・削除・バージョン制約変更するときだけ触る
