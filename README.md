@@ -63,13 +63,13 @@ StreamEvent                     ← 1段目:「これはストリーミングの
 
 ブロックごとに `start → delta(複数回) → stop` を繰り返し、1ターン終わると `AssistantMessage` が届く。ツール実行を挟んで次のターンがまた `StreamEvent` から始まり、クエリ全体の終了時には `ResultMessage` が届く。
 
-`message_delta` はターン終了時に1回だけ届き、最終的な `stop_reason`(応答が終わった理由)と累積の `usage`(トークン数)を含む。`message_stop` はストリームの終了を知らせるだけのイベント。
+`message_delta` はターン終了が近づくと1回以上届き、最終的な `stop_reason`(応答が終わった理由)と累積の `usage`(トークン数)を含む。`message_stop` はストリームの終了を知らせるだけのイベント。
 
 ### 実装方針
 
-ツールを呼び出すとき、Claudeはその入力引数(JSON)も `input_json_delta` として断片的に送ってくる。これは人間が読むテキストではないため、そのまま画面に出すと壊れかけのJSON片が表示されてしまう。そこで `agent.py` は `delta.type == "text_delta"` のときだけ画面に出すことで、この事故を防いでいる。
+ツールを呼び出すとき、Claudeはその入力引数(JSON)も `input_json_delta` として断片的に送ってくる。これは人間が読むテキストではないため、そのまま画面に出すと壊れかけのJSON片が表示されてしまう。そこで `agent.py` は `delta.type == "text_delta"` のときだけ画面に出すことで、この事故を防いでいる(そもそも`tool_use`ブロック中に`text_delta`が来ることはないため、実質的にはこの型チェックだけで十分)。
 
-さらに `content_block_start` で `tool_use` を検知した時点から `content_block_stop` までを `in_tool` フラグで区間として扱い、その間は `text_delta` を表示せず `[Using Tool: 名前]... Done` とだけ表示する。これにより会話テキストとツール呼び出しの表示が混ざらない。
+ただしこのままだとツール呼び出し中は何も表示されず無言になってしまう。そこで `content_block_start` で `tool_use` を検知した時点から `content_block_stop` までを `in_tool` フラグで区間として扱い、その間だけ `[Using Tool: 名前]... Done` というステータス表示に切り替えている。これにより会話テキストとツール呼び出しの表示が混ざらない。
 
 `message_delta`/`message_stop` の情報(`stop_reason`・usage)は現状未使用 — `ResultMessage` から取得すれば足りるため。`thinking_delta`(拡張思考)も現状未対応で、表示する要件が出た場合はブロック種別による分岐が必要になる。
 
