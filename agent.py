@@ -1,6 +1,17 @@
 import asyncio
 import os
-from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage, ProcessError, CLIConnectionError, StreamEvent
+from claude_agent_sdk import (
+  query,
+  ClaudeAgentOptions,
+  ResultMessage,
+  ProcessError,
+  CLIConnectionError,
+  StreamEvent,
+  ToolPermissionContext,
+  PermissionResultAllow,
+  PermissionResultDeny
+)
+from typing import Any
 
 SESSION_FILE = "session_id.txt"
 
@@ -25,12 +36,45 @@ def clear_session_id():
   if os.path.exists(SESSION_FILE):
     os.remove(SESSION_FILE)
 
+async def handle_tool_request(
+  tool_name: str,
+  input_data: dict[str, Any],
+  context: ToolPermissionContext
+) -> PermissionResultAllow | PermissionResultDeny:
+  if tool_name not in ("Write", "Edit"):
+    return PermissionResultAllow(updated_input=input_data)
+
+  file_path = input_data.get("file_path", "")
+  if not file_path:
+    return PermissionResultDeny(
+      behavior="deny",
+      message="file_pathが指定されていません",
+      interrupt=False
+    )
+
+  path = os.path.realpath(file_path)
+
+  if path.startswith(("/etc/", "/root/")) or "/.ssh/" in path:
+    return PermissionResultDeny(
+      behavior="deny",
+      message=f"機密領域への書き込みのため、タスクを中断しました: {path}",
+      interrupt=True
+    )
+
+  if not path.startswith("/app/"):
+    return PermissionResultDeny(
+      behavior="deny",
+      message=f"書き込みは /app/ 配下のみ許可されています: {path}",
+      interrupt=False
+    )
+
+  return PermissionResultAllow(updated_input=input_data)
 
 ###############
 # メイン処理
 ###############
 async def main():
-  in_tool = False
+  in_tool = False # ツールの呼び出し
 
   try:
     session_id = load_session_id()
@@ -39,10 +83,13 @@ async def main():
       prompt="浦安市のおすすめスポットを紹介して", # 指示は都度書き直す
 
       options=ClaudeAgentOptions(
-        allowed_tools=["Read", "Edit", "Glob", "WebSearch"],
-        permission_mode="acceptEdits",
         resume=session_id,
-        include_partial_messages=True
+        include_partial_messages=True,
+        disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
+        allowed_tools=["Read", "Grep", "Glob", "WebSearch"], # TODO: AskUserQuestionを追加する
+        permission_mode="default", # bypass_permissionsはallowed_toolsとdisallowed_toolsを素通りしてしまうため使わない
+        cwd="/app",
+        can_use_tool=handle_tool_request
       ),
     ):
       if isinstance(message, StreamEvent):

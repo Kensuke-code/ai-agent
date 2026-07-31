@@ -92,3 +92,4 @@ docker compose exec agent-app uv remove <package>
 - Claude Agent SDK (Python) リファレンス: https://code.claude.com/docs/ja/agent-sdk/python#query
 - Claude Agent SDK ガイド: https://shiftb.dev/articles/claude-agent-sdk-guide#basic-agent
 - Research Skillの実装例: https://zenn.dev/tokium_dev/articles/building-a-research-skill
+- Claude Agent SDK でつくる！対話型AIエージェント開発 https://zenn.dev/ml_bear/books/f2d52a3bc0b33c/viewer/1b209e
