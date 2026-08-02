@@ -36,6 +36,16 @@ def clear_session_id():
   if os.path.exists(SESSION_FILE):
     os.remove(SESSION_FILE)
 
+
+# streaming input mode: https://code.claude.com/docs/en/agent-sdk/python
+# yieldは1つだけなので、2回目の呼び出しでStopAsyncIterationになり入力ストリームが終了する
+# (複数ターン送りたい場合はyieldを複数書く)
+async def build_prompt_stream(text: str):
+  yield {
+    "type": "user",
+    "message": {"role": "user", "content": text},
+  }
+
 async def handle_tool_request(
   tool_name: str,
   input_data: dict[str, Any],
@@ -73,6 +83,9 @@ async def handle_tool_request(
 ###############
 # メイン処理
 ###############
+# 複数ユーザー/アプリから同時に呼ばれ、ユーザーごとに接続を張りっぱなしにして
+# 連続会話やinterrupt()が必要になったらquery()からClaudeSDKClientに差し替える
+# (その場合はユーザーごとに別インスタンスを持つ設計にする)
 async def main():
   in_tool = False # ツールの呼び出し
 
@@ -80,9 +93,10 @@ async def main():
     session_id = load_session_id()
 
     async for message in query(
-      prompt="浦安市のおすすめスポットを紹介して", # 指示は都度書き直す
+      prompt=build_prompt_stream("このプロジェクトのtest.pyを削除して"), # 指示は都度書き直す
 
       options=ClaudeAgentOptions(
+        model="sonnet",
         resume=session_id,
         include_partial_messages=True,
         disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
