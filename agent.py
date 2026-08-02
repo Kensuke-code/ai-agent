@@ -38,6 +38,8 @@ def clear_session_id():
 
 
 # streaming input mode: https://code.claude.com/docs/en/agent-sdk/python
+# yieldは1つだけなので、2回目の呼び出しでStopAsyncIterationになり入力ストリームが終了する
+# (複数ターン送りたい場合はyieldを複数書く)
 async def build_prompt_stream(text: str):
   yield {
     "type": "user",
