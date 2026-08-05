@@ -37,37 +37,42 @@ def clear_session_id():
     os.remove(SESSION_FILE)
 
 
-def parse_response(response: str, options: list) -> str:
+def parse_response(user_input_response: str, options: list) -> str:
   try:
-    indices = [int(s.strip()) -1 for s in response.split(",")]
-    labels = [options[i]["label"] for i in indices if 0 <= i < len(options)]
-    return ", ".join(labels) if labels else response
+    selected_labels = []
+
+    for number_str in user_input_response.split(","):
+      selected_index = int(number_str.strip()) - 1
+      if 0 <= selected_index < len(options):
+        selected_labels.append(options[selected_index]["label"])
+
+    return ", ".join(selected_labels) if selected_labels else user_input_response
   except ValueError:
-    return response
+    return user_input_response
 
 async def handle_ask_user_question(input_data: dict) -> PermissionResultAllow:
   answers = {}
 
-  for q in input_data.get("questions", []):
-    print(f"\n{q['question']}")
+  for question in input_data.get("questions", []):
+    print(f"\n{question['question']}")
 
-    options = q["options"]
+    options = question["options"]
 
-    for i, opt in enumerate(options):
-      print(f" {i + 1}. {opt['label']} - {opt['description']}")
-    if q.get("multiSelect"):
+    for i, option in enumerate(options):
+      print(f" {i + 1}. {option['label']} - {option['description']}")
+    if question.get("multiSelect"):
       print("カンマで区切って数字を入力するか、独自の回答を入力してください。")
     else:
       print("数字を入力するか、独自の回答を入力してください。")
 
-    response = input("Your choice: ").strip()
+    user_input_response = input("Your choice: ").strip()
 
-    answers[q["question"]] = parse_response(response, options)
+    answers[question["question"]] = parse_response(user_input_response, options)
 
   return PermissionResultAllow(
     updated_input={
-      **input_data,       # 元々あった "questions" キーはそのまま引き継ぐ(自分で作り直さない)
-      "answers": answers,  # ループ内で作った {質問文: 回答} の辞書をそのまま入れる
+      **input_data,
+      "answers": answers,  # question: 選択したlabel or question: 独自の回答テキスト
     }
   )
 
