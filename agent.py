@@ -1,7 +1,7 @@
 import asyncio
 import os
 from claude_agent_sdk import (
-  query,
+  ClaudeSDKClient,
   ClaudeAgentOptions,
   ResultMessage,
   ProcessError,
@@ -36,15 +36,6 @@ def clear_session_id():
   if os.path.exists(SESSION_FILE):
     os.remove(SESSION_FILE)
 
-
-# streaming input mode: https://code.claude.com/docs/en/agent-sdk/python
-# yieldは1つだけなので、2回目の呼び出しでStopAsyncIterationになり入力ストリームが終了する
-# (複数ターン送りたい場合はyieldを複数書く)
-async def build_prompt_stream(text: str):
-  yield {
-    "type": "user",
-    "message": {"role": "user", "content": text},
-  }
 
 def parse_response(response: str, options: list) -> str:
   try:
@@ -119,58 +110,65 @@ async def handle_tool_request(
 ###############
 # メイン処理
 ###############
-# 複数ユーザー/アプリから同時に呼ばれ、ユーザーごとに接続を張りっぱなしにして
-# 連続会話やinterrupt()が必要になったらquery()からClaudeSDKClientに差し替える
-# (その場合はユーザーごとに別インスタンスを持つ設計にする)
+# 複数ユーザー/アプリから同時に使う場合は、1つのClaudeSDKClientを使い回さず
+# ユーザー/セッションごとに別インスタンスを持つこと
+EXIT_COMMANDS = ("exit", "quit", "終了")
+
 async def main():
   in_tool = False # ツールの呼び出し
+  session_id = load_session_id()
+
+  options = ClaudeAgentOptions(
+    model="sonnet",
+    resume=session_id,
+    include_partial_messages=True,
+    disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
+    allowed_tools=["Read", "Grep", "Glob", "WebSearch"],
+    permission_mode="default", # bypass_permissionsはallowed_toolsとdisallowed_toolsを素通りしてしまうため使わない
+    cwd="/app",
+    can_use_tool=handle_tool_request,
+  )
 
   try:
-    session_id = load_session_id()
+    async with ClaudeSDKClient(options=options) as client:
+      user_input = "ディズニーパークのおすすめショップについて教えて。必要であればどちらのパークがいいか聞いて" # 指示は都度書き直す
 
-    async for message in query(
-      prompt=build_prompt_stream("ディズニーパークのおすすめレストランについて教えて。必要であればどちらのパークがいいか聞いて"), # 指示は都度書き直す
+      while user_input and user_input not in EXIT_COMMANDS:
+        await client.query(user_input)
 
-      options=ClaudeAgentOptions(
-        model="sonnet",
-        resume=session_id,
-        include_partial_messages=True,
-        disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
-        allowed_tools=["Read", "Grep", "Glob", "WebSearch"],
-        permission_mode="default", # bypass_permissionsはallowed_toolsとdisallowed_toolsを素通りしてしまうため使わない
-        cwd="/app",
-        can_use_tool=handle_tool_request
-      ),
-    ):
-      if isinstance(message, StreamEvent):
-        event = message.event
-        event_type = event.get("type")
+        async for message in client.receive_response():
+          if isinstance(message, StreamEvent):
+            event = message.event
+            event_type = event.get("type")
 
-        if event_type == "content_block_start":
-          content_block = event.get("content_block", {})
-          if content_block.get("type") == "tool_use":
-            tool_name = content_block.get("name")
-            print(f"\n[Using Tool: {tool_name}]...  ", end="", flush=True)
-            in_tool = True
+            if event_type == "content_block_start":
+              content_block = event.get("content_block", {})
+              if content_block.get("type") == "tool_use":
+                tool_name = content_block.get("name")
+                print(f"\n[Using Tool: {tool_name}]...  ", end="", flush=True)
+                in_tool = True
 
-        elif event_type == "content_block_delta":
-          delta = event.get("delta", {})
-          if delta.get("type") == "text_delta" and not in_tool:
-            print(delta.get("text", ""), end="", flush=True)
+            elif event_type == "content_block_delta":
+              delta = event.get("delta", {})
+              if delta.get("type") == "text_delta" and not in_tool:
+                print(delta.get("text", ""), end="", flush=True)
 
-        elif event_type == "content_block_stop":
-          if in_tool:
-            print("Done", flush=True)
-            in_tool = False
+            elif event_type == "content_block_stop":
+              if in_tool:
+                print("Done", flush=True)
+                in_tool = False
 
-      elif isinstance(message, ResultMessage):
-        session_id = message.session_id
+          elif isinstance(message, ResultMessage):
+            session_id = message.session_id
 
-        if message.subtype == "success":
-          print("\n\n--- Complete ---")
-          save_session_id(session_id)
-        else:
-          print(f"クエリが失敗しました: subtype={message.subtype}, is_error={message.is_error}")
+            if message.subtype == "success":
+              save_session_id(session_id)
+            else:
+              print(f"クエリが失敗しました: subtype={message.subtype}, is_error={message.is_error}")
+
+        user_input = input("\n\nYou: ").strip()
+
+    print("\n--- Complete ---")
 
   except ProcessError as e:
     print(f"セッションの再開に失敗しました。次回起動時にセッションを再生成します： {e}")
