@@ -33,9 +33,12 @@ uv run python agent.py
 
 (以前 `Credit balance is too low` エラーが出たのは `ANTHROPIC_API_KEY` 経由の課金クレジットが尽きていたためで、上記の切り替えで解消した。)
 
-## セッション機能(会話の継続)
+## 会話の継続(ClaudeSDKClient)
 
-`agent.py` は実行完了時に `session_id` を `session_id.txt` に保存し、次回実行時にそのIDで会話を再開する。続けたい場合はファイルを残し、新規に始めたい場合は削除してから実行する。
+`agent.py` は `ClaudeSDKClient` で接続を張ったまま、以下の2段階で会話を継続する。
+
+- **プロセス内(同一実行内)**: 1ターンの応答が終わるとターミナルで `You: ` の入力を待ち、入力した内容を同じ接続のまま次のターンとして送る。Claudeがテキストで質問を返してきた場合もここで回答すれば会話が続く。空入力または `exit` / `quit` / `終了` を入力すると終了する。
+- **プロセスを跨いだ再開**: 実行終了時に `session_id` を `session_id.txt` に保存し、次回起動時にそのIDで会話を再開する。続けたい場合はファイルを残し、新規に始めたい場合は削除してから実行する。
 
 `session_id.txt` は `.gitignore` 済み。再開に失敗した場合(セッションが存在しない/壊れているなど)は自動削除され、次回は新規セッションから始まる。
 
@@ -72,6 +75,28 @@ StreamEvent                     ← 1段目:「これはストリーミングの
 ただしこのままだとツール呼び出し中は何も表示されず無言になってしまう。そこで `content_block_start` で `tool_use` を検知した時点から `content_block_stop` までを `in_tool` フラグで区間として扱い、その間だけ `[Using Tool: 名前]... Done` というステータス表示に切り替えている。これにより会話テキストとツール呼び出しの表示が混ざらない。
 
 `message_delta`/`message_stop` の情報(`stop_reason`・usage)は現状未使用 — `ResultMessage` から取得すれば足りるため。`thinking_delta`(拡張思考)も現状未対応で、表示する要件が出た場合はブロック種別による分岐が必要になる。
+
+## パーミッション制御(can_use_tool)
+
+`ClaudeAgentOptions(can_use_tool=handle_tool_request)` で、ツール呼び出しごとに許可/拒否を判定している。
+
+### Write / Edit — 書き込み先を `/app/` 配下に限定
+
+- `file_path` を `os.path.realpath` で解決し、シンボリックリンクや `..` を実体パスに正規化してから判定する
+- `/etc/`, `/root/`, `.ssh/` を含むパスへの書き込みは**タスク/セッションごと中断**する(`interrupt=True`)。狙って機密領域に書き込もうとする明らかに異常な挙動とみなすため
+- それ以外で `/app/` 配下でないパスは、その書き込みだけを拒否して継続する(`interrupt=False`)
+
+### Bash — `rm` / `sudo` を拒否
+
+`disallowed_tools=["Bash(rm *)", "Bash(sudo *)"]` でCLIレベルのパターンマッチにより拒否する。コンテナに `git` 自体が入っていない(`Dockerfile` 参照)ため、`git push` 等の追加制限は行っていない。
+
+### AskUserQuestion — ターミナルで直接質問に答える
+
+Claudeが `AskUserQuestion` ツールを呼ぶと、`handle_ask_user_question` が質問と選択肢をターミナルに表示し、`input()` で人間の回答を待つ。回答は `question["question"]` をキーとした `answers` 辞書にまとめ、`PermissionResultAllow(updated_input={**input_data, "answers": answers})` として返すことで、同じターン内でClaudeに回答が渡る(新しいプロンプトを送り直す必要はない)。
+
+### 注意: `allowed_tools` は `can_use_tool` をシャドーイングする
+
+`allowed_tools` にツール名をそのまま(括弧なしで)書くと、そのツールは `can_use_tool` を経由せず自動承認される。`handle_tool_request` 側で個別に判定したいツール(`Write`, `Edit`, `AskUserQuestion`)は `allowed_tools` に入れず、`can_use_tool` 側の分岐だけで許可/拒否を決める。`Read` / `Grep` / `Glob` / `WebSearch` のように無条件で許可してよいツールだけを `allowed_tools` に入れている。
 
 ## 依存関係の管理(pyproject.toml / uv.lock)
 
