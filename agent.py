@@ -46,37 +46,73 @@ async def build_prompt_stream(text: str):
     "message": {"role": "user", "content": text},
   }
 
+def parse_response(response: str, options: list) -> str:
+  try:
+    indices = [int(s.strip()) -1 for s in response.split(",")]
+    labels = [options[i]["label"] for i in indices if 0 <= i < len(options)]
+    return ", ".join(labels) if labels else response
+  except ValueError:
+    return response
+
+async def handle_ask_user_question(input_data: dict) -> PermissionResultAllow:
+  answers = {}
+
+  for q in input_data.get("questions", []):
+    print(f"\n{q['question']}")
+
+    options = q["options"]
+
+    for i, opt in enumerate(options):
+      print(f" {i + 1}. {opt['label']} - {opt['description']}")
+    if q.get("multiSelect"):
+      print("カンマで区切って数字を入力するか、独自の回答を入力してください。")
+    else:
+      print("数字を入力するか、独自の回答を入力してください。")
+
+    response = input("Your choice: ").strip()
+
+    answers[q["question"]] = parse_response(response, options)
+
+  return PermissionResultAllow(
+    updated_input={
+      **input_data,       # 元々あった "questions" キーはそのまま引き継ぐ(自分で作り直さない)
+      "answers": answers,  # ループ内で作った {質問文: 回答} の辞書をそのまま入れる
+    }
+  )
+
 async def handle_tool_request(
   tool_name: str,
   input_data: dict[str, Any],
   context: ToolPermissionContext
 ) -> PermissionResultAllow | PermissionResultDeny:
-  if tool_name not in ("Write", "Edit"):
-    return PermissionResultAllow(updated_input=input_data)
 
-  file_path = input_data.get("file_path", "")
-  if not file_path:
-    return PermissionResultDeny(
-      behavior="deny",
-      message="file_pathが指定されていません",
-      interrupt=False
-    )
+  if tool_name == "AskUserQuestion":
+    return await handle_ask_user_question(input_data)
 
-  path = os.path.realpath(file_path)
+  if tool_name in ("Write", "Edit"):
+    file_path = input_data.get("file_path", "")
+    if not file_path:
+      return PermissionResultDeny(
+        behavior="deny",
+        message="file_pathが指定されていません",
+        interrupt=False
+      )
 
-  if path.startswith(("/etc/", "/root/")) or "/.ssh/" in path:
-    return PermissionResultDeny(
-      behavior="deny",
-      message=f"機密領域への書き込みのため、タスクを中断しました: {path}",
-      interrupt=True
-    )
+    path = os.path.realpath(file_path)
 
-  if not path.startswith("/app/"):
-    return PermissionResultDeny(
-      behavior="deny",
-      message=f"書き込みは /app/ 配下のみ許可されています: {path}",
-      interrupt=False
-    )
+    if path.startswith(("/etc/", "/root/")) or "/.ssh/" in path:
+      return PermissionResultDeny(
+        behavior="deny",
+        message=f"機密領域への書き込みのため、タスクを中断しました: {path}",
+        interrupt=True
+      )
+
+    if not path.startswith("/app/"):
+      return PermissionResultDeny(
+        behavior="deny",
+        message=f"書き込みは /app/ 配下のみ許可されています: {path}",
+        interrupt=False
+      )
 
   return PermissionResultAllow(updated_input=input_data)
 
@@ -93,14 +129,14 @@ async def main():
     session_id = load_session_id()
 
     async for message in query(
-      prompt=build_prompt_stream("このプロジェクトのtest.pyを削除して"), # 指示は都度書き直す
+      prompt=build_prompt_stream("ディズニーパークのおすすめレストランについて教えて。必要であればどちらのパークがいいか聞いて"), # 指示は都度書き直す
 
       options=ClaudeAgentOptions(
         model="sonnet",
         resume=session_id,
         include_partial_messages=True,
         disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
-        allowed_tools=["Read", "Grep", "Glob", "WebSearch"], # TODO: AskUserQuestionを追加する
+        allowed_tools=["Read", "Grep", "Glob", "WebSearch"],
         permission_mode="default", # bypass_permissionsはallowed_toolsとdisallowed_toolsを素通りしてしまうため使わない
         cwd="/app",
         can_use_tool=handle_tool_request
