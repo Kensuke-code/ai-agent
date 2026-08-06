@@ -76,6 +76,42 @@ async def handle_ask_user_question(input_data: dict) -> PermissionResultAllow:
     }
   )
 
+def is_contains_dangerous_keyword(command: str) -> bool:
+  WARNING_BASH_COMMANDS = ["sudo","chmod", "curl", "wget", "git push","git reset"]
+
+  for keyword in WARNING_BASH_COMMANDS:
+    if keyword in command:
+      return True
+  return False
+
+async def handle_ask_tool_configuration(input_data: dict) -> PermissionResultAllow | PermissionResultDeny:
+
+  command = input_data.get("command", "")
+
+  if not command:
+    return PermissionResultDeny(
+      behavior="deny",
+      message="Bashコマンドが指定されていません",
+      interrupt=False
+    )
+
+  if is_contains_dangerous_keyword(command):
+    print(f"以下のコマンドを実行しようとしていますが許可しますか？\n")
+    print(f"使用コマンド: {command} \n")
+
+    user_input_response = input("Your Input [y/N]").strip()
+
+    if (user_input_response == "y") or (user_input_response == "Y"):
+      return PermissionResultAllow(updated_input=input_data)
+    else:
+      return PermissionResultDeny(
+        behavior="deny",
+        message="ユーザーによってコマンド実行が拒否されました",
+        interrupt=False
+    )
+
+  return PermissionResultAllow(updated_input=input_data)
+
 async def handle_tool_request(
   tool_name: str,
   input_data: dict[str, Any],
@@ -84,6 +120,9 @@ async def handle_tool_request(
 
   if tool_name == "AskUserQuestion":
     return await handle_ask_user_question(input_data)
+
+  if tool_name == "Bash":
+    return await handle_ask_tool_configuration(input_data)
 
   if tool_name in ("Write", "Edit"):
     file_path = input_data.get("file_path", "")
@@ -127,7 +166,7 @@ async def main():
     model="sonnet",
     resume=session_id,
     include_partial_messages=True,
-    disallowed_tools=["Bash(rm *)", "Bash(sudo *)"],
+    disallowed_tools=["Bash(rm *)"],
     allowed_tools=["Read", "Grep", "Glob", "WebSearch"],
     permission_mode="default", # bypass_permissionsはallowed_toolsとdisallowed_toolsを素通りしてしまうため使わない
     cwd="/app",
@@ -136,7 +175,7 @@ async def main():
 
   try:
     async with ClaudeSDKClient(options=options) as client:
-      user_input = "ディズニーパークのおすすめショップについて教えて。必要であればどちらのパークがいいか聞いて" # 指示は都度書き直す
+      user_input = "curl --version を実行して、バージョンを教えて"
 
       while user_input and user_input not in EXIT_COMMANDS:
         await client.query(user_input)
