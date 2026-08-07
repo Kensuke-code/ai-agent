@@ -10,9 +10,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache
 
-# utils.py等は焼き込まず、compose.ymlのバインドマウント頼みにしている
-COPY agent.py .
+# コードはcompose.ymlのバインドマウント頼みにしていて、イメージには焼き込まない
 
 # コンテナを起動したままにしておき、docker compose exec で
-# agent.pyを何度も実行するための待機コマンド。
+# main.pyを何度も実行するための待機コマンド。
 CMD ["sleep", "infinity"]
