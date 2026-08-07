@@ -1,7 +1,7 @@
 # ai-agent
 Custom AI Agent
 
-Claude Agent SDK (Python) を使って、コンテナ内で `agent.py` を動かすプロジェクト。
+Claude Agent SDK (Python) を使って、コンテナ内で `main.py` を動かすプロジェクト。
 
 ## セットアップ
 
@@ -16,7 +16,7 @@ docker compose exec agent-app bash
 コンテナは `sleep infinity` で起動したままになるので、入った後に好きなタイミングで実行する。
 
 ```bash
-uv run python src/agent.py
+uv run python src/main.py
 ```
 
 ## 認証(API課金ではなくPro/Maxプランを使う)
@@ -35,7 +35,7 @@ uv run python src/agent.py
 
 ## 会話の継続(ClaudeSDKClient)
 
-`agent.py` は `ClaudeSDKClient` で接続を張ったまま、以下の2段階で会話を継続する。
+`main.py` は `ClaudeSDKClient` で接続を張ったまま、以下の2段階で会話を継続する。
 
 - **プロセス内(同一実行内)**: 1ターンの応答が終わるとターミナルで `You: ` の入力を待ち、入力した内容を同じ接続のまま次のターンとして送る。Claudeがテキストで質問を返してきた場合もここで回答すれば会話が続く。空入力または `exit` / `quit` / `終了` を入力すると終了する。
 - **プロセスを跨いだ再開**: 実行終了時に `session_id` を `session_id.txt` に保存し、次回起動時にそのIDで会話を再開する。続けたい場合はファイルを残し、新規に始めたい場合は削除してから実行する。
@@ -70,7 +70,7 @@ StreamEvent                     ← 1段目:「これはストリーミングの
 
 ### 実装方針
 
-ツールを呼び出すとき、Claudeはその入力引数(JSON)も `input_json_delta` として断片的に送ってくる。これは人間が読むテキストではないため、そのまま画面に出すと壊れかけのJSON片が表示されてしまう。そこで `agent.py` は `delta.type == "text_delta"` のときだけ画面に出すことで、この事故を防いでいる(そもそも`tool_use`ブロック中に`text_delta`が来ることはないため、実質的にはこの型チェックだけで十分)。
+ツールを呼び出すとき、Claudeはその入力引数(JSON)も `input_json_delta` として断片的に送ってくる。これは人間が読むテキストではないため、そのまま画面に出すと壊れかけのJSON片が表示されてしまう。そこで `main.py` は `delta.type == "text_delta"` のときだけ画面に出すことで、この事故を防いでいる(そもそも`tool_use`ブロック中に`text_delta`が来ることはないため、実質的にはこの型チェックだけで十分)。
 
 ただしこのままだとツール呼び出し中は何も表示されず無言になってしまう。そこで `content_block_start` で `tool_use` を検知した時点から `content_block_stop` までを `in_tool` フラグで区間として扱い、その間だけ `[Using Tool: 名前]... Done` というステータス表示に切り替えている。これにより会話テキストとツール呼び出しの表示が混ざらない。
 
