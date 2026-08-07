@@ -1,3 +1,4 @@
 .venv
 .env
 session_id.txt
+__pycache__/
