@@ -16,7 +16,7 @@ docker compose exec agent-app bash
 コンテナは `sleep infinity` で起動したままになるので、入った後に好きなタイミングで実行する。
 
 ```bash
-uv run python agent.py
+uv run python src/agent.py
 ```
 
 ## 認証(API課金ではなくPro/Maxプランを使う)

@@ -175,7 +175,7 @@ async def main():
 
   try:
     async with ClaudeSDKClient(options=options) as client:
-      user_input = "curl --version を実行して、バージョンを教えて"
+      user_input = "今日のディズニーシーのアテンダンスは？"
 
       while user_input and user_input not in EXIT_COMMANDS:
         await client.query(user_input)
